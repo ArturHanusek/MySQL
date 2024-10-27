@@ -1,4 +1,18 @@
 <?php
+// Enable error reporting
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Allow CORS
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+// Handle OPTIONS request for CORS
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
+
 header('Content-Type: application/json');
 
 // OpenAPI schema
@@ -9,33 +23,18 @@ $openapi_schema = [
         'description' => 'API for executing SQL queries with dynamic database connections',
         'version' => '1.0.0'
     ],
-    'servers' => [
-        [
-            'url' => 'http://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']),
-            'description' => 'API Server'
-        ]
-    ],
     'paths' => [
         '/' => [
             'get' => [
                 'summary' => 'Get API Documentation',
-                'description' => 'Returns OpenAPI schema',
                 'responses' => [
                     '200' => [
-                        'description' => 'Successful response with OpenAPI schema',
-                        'content' => [
-                            'application/json' => [
-                                'schema' => [
-                                    'type' => 'object'
-                                ]
-                            ]
-                        ]
+                        'description' => 'OpenAPI schema'
                     ]
                 ]
             ],
             'post' => [
                 'summary' => 'Execute SQL Query',
-                'description' => 'Execute SQL query with provided database connection details',
                 'requestBody' => [
                     'required' => true,
                     'content' => [
@@ -45,25 +44,19 @@ $openapi_schema = [
                                 'required' => ['host', 'dbname', 'username', 'password', 'query'],
                                 'properties' => [
                                     'host' => [
-                                        'type' => 'string',
-                                        'description' => 'Database host'
+                                        'type' => 'string'
                                     ],
                                     'dbname' => [
-                                        'type' => 'string',
-                                        'description' => 'Database name'
+                                        'type' => 'string'
                                     ],
                                     'username' => [
-                                        'type' => 'string',
-                                        'description' => 'Database username'
+                                        'type' => 'string'
                                     ],
                                     'password' => [
-                                        'type' => 'string',
-                                        'description' => 'Database password',
-                                        'format' => 'password'
+                                        'type' => 'string'
                                     ],
                                     'query' => [
-                                        'type' => 'string',
-                                        'description' => 'SQL query to execute'
+                                        'type' => 'string'
                                     ]
                                 ]
                             ]
@@ -72,110 +65,83 @@ $openapi_schema = [
                 ],
                 'responses' => [
                     '200' => [
-                        'description' => 'Successful response',
-                        'content' => [
-                            'application/json' => [
-                                'schema' => [
-                                    'type' => 'object',
-                                    'properties' => [
-                                        'status' => [
-                                            'type' => 'string',
-                                            'enum' => ['success', 'error']
-                                        ],
-                                        'data' => [
-                                            'type' => ['object', 'array', 'null']
-                                        ],
-                                        'message' => [
-                                            'type' => 'string'
-                                        ]
-                                    ]
-                                ]
-                            ]
-                        ]
-                    },
-                    '400' => [
-    'description' => 'Bad Request',
-    'content' => [
-        'application/json' => [
-            'schema' => [
-                'type' => 'object',
-                'properties' => [
-                    'status' => [
-                        'type' => 'string',
-                        'enum' => ['error']
-                    ],
-                    'message' => [
-                        'type' => 'string'
+                        'description' => 'Query results'
                     ]
-                ]
-            ]
-        ]
-    ]
-                    }
                 ]
             ]
         ]
     ]
 ];
 
-// API response structure
-function sendResponse($status, $data = null, $message = '') {
-    echo json_encode([
-        'status' => $status,
-        'data' => $data,
-        'message' => $message
-    ]);
-    exit;
-}
-
-// Handle GET request - return OpenAPI schema
+// Handle GET request
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    echo json_encode($openapi_schema, JSON_PRETTY_PRINT);
+    echo json_encode($openapi_schema);
     exit;
 }
 
 // Handle POST request
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Get and validate JSON input
-    $input = json_decode(file_get_contents('php://input'), true);
-
-    // Validate required fields
-    $required_fields = ['host', 'dbname', 'username', 'password', 'query'];
-    foreach ($required_fields as $field) {
-        if (!isset($input[$field]) || empty($input[$field])) {
-            sendResponse('error', null, "Field '$field' is required");
-        }
-    }
-
     try {
-        // Create PDO connection using provided credentials
+        // Get JSON input
+        $jsonInput = file_get_contents('php://input');
+        if (!$jsonInput) {
+            throw new Exception('No input provided');
+        }
+
+        // Decode JSON
+        $input = json_decode($jsonInput, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Invalid JSON: ' . json_last_error_msg());
+        }
+
+        // Validate required fields
+        $required = ['host', 'dbname', 'username', 'password', 'query'];
+        foreach ($required as $field) {
+            if (empty($input[$field])) {
+                throw new Exception("Missing required field: $field");
+            }
+        }
+
+        // Create PDO connection
         $dsn = "mysql:host={$input['host']};dbname={$input['dbname']};charset=utf8mb4";
         $pdo = new PDO($dsn, $input['username'], $input['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
         ]);
 
-        // Prepare and execute the query
+        // Execute query
         $stmt = $pdo->prepare($input['query']);
         $stmt->execute();
 
-        // Handle different query types
+        // Get results
         if (stripos($input['query'], 'SELECT') === 0) {
-            // For SELECT queries, fetch all results
             $result = $stmt->fetchAll();
-            sendResponse('success', $result);
         } else {
-            // For INSERT, UPDATE, DELETE queries, return affected rows
-            $affectedRows = $stmt->rowCount();
-            sendResponse('success', ['affected_rows' => $affectedRows]);
+            $result = [
+                'affected_rows' => $stmt->rowCount()
+            ];
         }
 
-    } catch (PDOException $e) {
-        sendResponse('error', null, 'Database error: ' . $e->getMessage());
+        // Return success response
+        echo json_encode([
+            'status' => 'success',
+            'data' => $result
+        ]);
+
     } catch (Exception $e) {
-        sendResponse('error', null, 'Server error: ' . $e->getMessage());
+        http_response_code(400);
+        echo json_encode([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ]);
     }
-} else {
-    sendResponse('error', null, 'Method not allowed');
+    exit;
 }
+
+// Handle invalid methods
+http_response_code(405);
+echo json_encode([
+    'status' => 'error',
+    'message' => 'Method not allowed'
+]);
 ?>
