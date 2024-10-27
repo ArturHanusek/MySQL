@@ -36,9 +36,6 @@ $openapi_schema = [
             'post' => [
                 'summary' => 'Execute SQL Query',
                 'description' => 'Execute SQL query with provided database connection details',
-                'security' => [
-                    ['ApiKeyAuth' => []]
-                ],
                 'requestBody' => [
                     'required' => true,
                     'content' => [
@@ -95,36 +92,27 @@ $openapi_schema = [
                                 ]
                             ]
                         ]
-                    ],
+                    },
                     '400' => [
-                        'description' => 'Bad Request',
-                        'content' => [
-                            'application/json' => [
-                                'schema' => [
-                                    'type' => 'object',
-                                    'properties' => [
-                                        'status' => [
-                                            'type' => 'string',
-                                            'enum' => ['error']
-                                        ],
-                                        'message' => [
-                                            'type' => 'string'
-                                        ]
-                                    ]
-                                ]
-                            ]
-                        ]
+    'description' => 'Bad Request',
+    'content' => [
+        'application/json' => [
+            'schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'status' => [
+                        'type' => 'string',
+                        'enum' => ['error']
+                    ],
+                    'message' => [
+                        'type' => 'string'
                     ]
                 ]
             ]
         ]
-    ],
-    'components' => [
-        'securitySchemes' => [
-            'ApiKeyAuth' => [
-                'type' => 'apiKey',
-                'in' => 'header',
-                'name' => 'X-API-Key'
+    ]
+                    }
+                ]
             ]
         ]
     ]
@@ -157,12 +145,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!isset($input[$field]) || empty($input[$field])) {
             sendResponse('error', null, "Field '$field' is required");
         }
-    }
-
-    // Validate API key
-    $api_key = $_SERVER['HTTP_X_API_KEY'] ?? '';
-    if ($api_key !== 'your_secure_api_key') {
-        sendResponse('error', null, 'Invalid API key');
     }
 
     try {
